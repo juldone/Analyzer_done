@@ -1,0 +1,166 @@
+## EC2 Deployment Guide for OSINT Image Metadata Analyzer
+
+### Prerequisites
+- AWS Account with EC2 access
+- EC2 instance running Amazon Linux 2023 (t2.micro or larger)
+- Security group with port 80 open
+
+### 1. Instance Setup
+
+SSH into your EC2 instance:
+```bash
+ssh -i your-key.pem ec2-user@your-ec2-ip
+```
+
+Install Docker and Docker Compose:
+```bash
+sudo yum update -y
+sudo yum install docker -y
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo usermod -aG docker ec2-user
+sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+```
+
+### 2. Project Setup
+
+Create project directory:
+```bash
+mkdir osint-app
+cd osint-app
+```
+
+Copy your project files to the EC2 instance using SCP:
+```bash
+scp -i your-key.pem -r ./project/* ec2-user@your-ec2-ip:~/osint-app/
+```
+
+### 3. Environment Configuration
+
+Update the environment variables in docker-compose.prod.yml:
+- DATABASE_URL
+- JWT_SECRET
+- EMAIL_SERVICE
+- EMAIL_USER
+- EMAIL_PASS
+- CLIENT_URL (set to http://your-ec2-ip)
+
+### 4. Build and Deploy
+
+Build and start the containers:
+```bash
+docker-compose -f docker-compose.prod.yml up -d --build
+```
+
+### 5. Verify Deployment
+
+Access your application:
+```
+http://your-ec2-ip
+```
+
+### 6. Maintenance Commands
+
+View logs:
+```bash
+docker-compose -f docker-compose.prod.yml logs -f
+```
+
+Stop application:
+```bash
+docker-compose -f docker-compose.prod.yml down
+```
+
+Restart application:
+```bash
+docker-compose -f docker-compose.prod.yml restart
+```
+
+Update application:
+```bash
+docker-compose -f docker-compose.prod.yml pull
+docker-compose -f docker-compose.prod.yml up -d --build
+```
+
+### 7. Code Changes Required
+
+1. Update vite.config.ts to handle production build:
+```typescript
+export default defineConfig({
+  plugins: [react()],
+  optimizeDeps: {
+    exclude: ['lucide-react'],
+  },
+  server: {
+    host: true,
+    port: 5173
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: false
+  }
+});
+```
+
+2. Update axios base URL in AuthContext.tsx:
+```typescript
+axios.defaults.baseURL = process.env.NODE_ENV === 'production' 
+  ? '/api'
+  : 'http://localhost:5000/api';
+```
+
+3. Update WebSocket connection in StreamingPage.tsx:
+```typescript
+const socket = io(process.env.NODE_ENV === 'production' 
+  ? '/'
+  : 'http://localhost:5000');
+```
+
+### 8. Troubleshooting
+
+1. Container issues:
+```bash
+docker ps -a  # Check container status
+docker logs container_name  # View container logs
+```
+
+2. Permission issues:
+```bash
+sudo chown -R ec2-user:ec2-user ~/osint-app
+```
+
+3. Database connection issues:
+```bash
+docker-compose -f docker-compose.prod.yml exec db psql -U postgres
+```
+
+### 9. Backup and Restore
+
+Backup database:
+```bash
+docker-compose -f docker-compose.prod.yml exec db pg_dump -U postgres osint_metadata > backup.sql
+```
+
+Restore database:
+```bash
+cat backup.sql | docker-compose -f docker-compose.prod.yml exec -T db psql -U postgres osint_metadata
+```
+
+### Security Notes
+
+1. This setup uses HTTP only. For production, consider:
+   - Adding SSL/TLS with Let's Encrypt
+   - Using a domain name
+   - Implementing rate limiting
+   - Setting up AWS WAF
+
+2. Database security:
+   - Change default postgres password
+   - Regular backups
+   - Restrict database access
+
+3. Application security:
+   - Use strong JWT secrets
+   - Implement rate limiting
+   - Regular security updates

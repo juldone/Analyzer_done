@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_DB: osint_metadata
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: neues_passwort
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    restart: always
+    ports:
+      - "80:5000" # Öffentlich erreichbar über Port 80 → Express/Frontend
+    depends_on:
+      - db
+    env_file:
+      - .env
+    volumes:
+      - ./server/uploads:/app/server/uploads
+
+volumes:
+  postgres_data:
